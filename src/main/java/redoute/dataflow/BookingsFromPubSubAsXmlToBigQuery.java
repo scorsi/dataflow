@@ -9,6 +9,7 @@ import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.joda.time.Duration;
 import redoute.dataflow.data.Booking;
+import redoute.dataflow.data.Bookings;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Unmarshaller;
@@ -45,14 +46,27 @@ public class BookingsFromPubSubAsXmlToBigQuery {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
                         try {
+                            // Try for one element
                             JAXBContext jaxbContext = JAXBContext.newInstance(Booking.class);
                             Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
                             StringReader reader = new StringReader(c.element());
 
                             Booking b = (Booking) unmarshaller.unmarshal(reader);
                             c.output(b);
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                        } catch (Exception e1) {
+                            // Try for list of elements
+                            try {
+                                JAXBContext jaxbContext = JAXBContext.newInstance(Bookings.class);
+                                Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+                                StringReader reader = new StringReader(c.element());
+
+                                Bookings b = (Bookings) unmarshaller.unmarshal(reader);
+                                for (int i = 0; i < b.bookings.size(); ++i) {
+                                    c.output(b.bookings.get(i));
+                                }
+                            } catch (Exception e2) {
+                                // nothing
+                            }
                         }
                     }
                 }))
