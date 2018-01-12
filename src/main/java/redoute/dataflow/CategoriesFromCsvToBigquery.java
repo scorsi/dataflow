@@ -5,12 +5,28 @@ import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
-import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.options.*;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
 import redoute.dataflow.data.Category;
 
 public class CategoriesFromCsvToBigquery {
+
+    private interface CategoriesFromCsvToBigqueryOptions extends PipelineOptions {
+        @Description("Path of the CSV file containing the categories")
+        @Validation.Required
+        ValueProvider<String> getInputFile();
+
+        @SuppressWarnings("unused")
+        void setInputFile(ValueProvider<String> value);
+
+        @Description("Path of the categories BigQuery table")
+        @Validation.Required
+        String getBigQueryTable();
+
+        @SuppressWarnings("unused")
+        void setBigQueryTable(String value);
+    }
 
     public static void main(String[] args) {
         CategoriesFromCsvToBigqueryOptions options = PipelineOptionsFactory

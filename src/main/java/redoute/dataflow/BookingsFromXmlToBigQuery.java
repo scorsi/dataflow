@@ -5,12 +5,30 @@ import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
 import org.apache.beam.sdk.io.xml.XmlIO;
-import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.options.*;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
 import redoute.dataflow.data.Booking;
 
 public class BookingsFromXmlToBigQuery {
+
+    private interface BookingsFromXmlToBigQueryOptions extends PipelineOptions {
+        @Description("Path of the XML file containing the bookings")
+        @Validation.Required
+        @Default.String("gs://data_bucket_flow/trackingData-20171227T150412161Z.xml")
+        ValueProvider<String> getInputFile();
+
+        @SuppressWarnings("unused")
+        void setInputFile(ValueProvider<String> value);
+
+        @Description("Path of the bookings BigQuery table")
+        @Validation.Required
+        @Default.String("xenon-sunspot-180314:dataflow_test.Bookings")
+        ValueProvider<String> getBigQueryTable();
+
+        @SuppressWarnings("unused")
+        void setBigQueryTable(ValueProvider<String> value);
+    }
 
     public static void main(String[] args) {
         BookingsFromXmlToBigQueryOptions options = PipelineOptionsFactory
