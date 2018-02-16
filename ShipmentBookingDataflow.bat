@@ -1,0 +1,1 @@
+mvn compile exec:java -Dexec.mainClass=redoute.dataflow.ShipmentBookingDataflow -Dexec.args="--project=datapipeline-redoute --stagingLocation=gs://dataflow-redoute/staging --tempLocation=gs://dataflow-redoute/temp --pubSubSubscription=projects/datapipeline-redoute/subscriptions/display-test --runner=DataflowRunner"
