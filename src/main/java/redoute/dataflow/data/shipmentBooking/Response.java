@@ -1,9 +1,13 @@
 package redoute.dataflow.data.shipmentBooking;
 
+import com.google.api.client.util.DateTime;
+
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlElementWrapper;
 import javax.xml.bind.annotation.XmlType;
 import java.io.Serializable;
+import java.time.Instant;
+import java.util.Date;
 import java.util.List;
 
 @XmlType(name = "Response")
@@ -24,6 +28,8 @@ public class Response implements Serializable {
     @XmlElement(name = "CarrierServiceName")
     public String carrierServiceName;
 
+    public Date date = Date.from(Instant.now());
+
     @XmlElementWrapper(name = "ShipmentsBooked")
     @XmlElement(name = "ShipmentBooked", type = ShipmentBooked.class)
     public List<ShipmentBooked> shipmentsBooked;
@@ -38,6 +44,10 @@ public class Response implements Serializable {
             sb.append(" ");
         }
         sb.append("\"customerId\" : \"").append(customerId).append("\",\n");
+        for (int i = 0; i < level * spaces_level; i++) {
+            sb.append(" ");
+        }
+        sb.append("\"timestamp\" : \"").append(new DateTime(date)).append("\",\n");
         for (int i = 0; i < level * spaces_level; i++) {
             sb.append(" ");
         }

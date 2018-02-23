@@ -1,6 +1,7 @@
 package redoute.dataflow;
 
 import com.google.api.client.util.ArrayMap;
+import com.google.api.client.util.DateTime;
 import com.google.api.services.bigquery.model.TableFieldSchema;
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
@@ -14,7 +15,10 @@ import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.PCollection;
 import org.joda.time.Duration;
-import redoute.dataflow.data.shipmentBooking.*;
+import redoute.dataflow.data.shipmentBooking.DeliveryDetail;
+import redoute.dataflow.data.shipmentBooking.Response;
+import redoute.dataflow.data.shipmentBooking.ShipmentBooked;
+import redoute.dataflow.data.shipmentBooking.ShipmentBookingResponse;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
@@ -44,38 +48,42 @@ public class ShipmentBookingDataflow {
 
         /* Apply transformations to the pipeline */
         PCollection<ShipmentBookingResponse> shipments = pipeline
-                .apply("Read the XML files from Pub/Sub",
+                .apply("Read the XML files from PubSub",
+
                         PubsubIO.readStrings()
                                 .fromSubscription(options.getPubSubSubscription()))
 
                 .apply("Apply fixed window",
-                        Window.into(SlidingWindows.of(Duration.standardMinutes(1)).every(Duration.standardMinutes(1))))
+                        Window.into(SlidingWindows.of(Duration.standardMinutes(10)).every(Duration.standardMinutes(10))))
 
                 .apply("Transform XML nodes to Java-Object", ParDo.of(new DoFn<String, ShipmentBookingResponse>() {
                     @ProcessElement
-                    public void processeElement(ProcessContext c) {
-                        try {
-                            JAXBContext jaxbContext = JAXBContext.newInstance(ShipmentBookingResponse.class);
-                            Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-                            StringReader reader = new StringReader(c.element());
+                    public void processeElement(ProcessContext c) throws JAXBException {
+//                        try {
+                        JAXBContext jaxbContext = JAXBContext.newInstance(ShipmentBookingResponse.class);
+                        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+                        StringReader reader = new StringReader(c.element());
 
-                            ShipmentBookingResponse response = (ShipmentBookingResponse) unmarshaller.unmarshal(reader);
-                            c.output(response);
-                        } catch (JAXBException e) {
-                            e.printStackTrace();
-                        }
+                        ShipmentBookingResponse shipmentBooking = (ShipmentBookingResponse) unmarshaller.unmarshal(reader);
+                        if (shipmentBooking == null || shipmentBooking.response == null) return;
+                        c.output(shipmentBooking);
+//                        } catch (JAXBException e) {
+//                            e.printStackTrace();
+//                        }
                     }
                 }));
 
         // Write to PubSub
+
         shipments
-                .apply("Create JSON String object from Java-Object", ParDo.of(new DoFn<ShipmentBookingResponse, String>() {
+                .apply("Create JSON-Object from Java-Object", ParDo.of(new DoFn<ShipmentBookingResponse, String>() {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
                         c.output(c.element().toJson());
+                        System.out.println(c.element().toJson());
                     }
                 }))
-                .apply("Write to Pub/Sub", ParDo.of(new DoFn<String, Void>() {
+                .apply("Write to PubSub", ParDo.of(new DoFn<String, Void>() {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
                         c.element();
@@ -87,69 +95,70 @@ public class ShipmentBookingDataflow {
                 .apply("Create BigQuery TableRows from Java-Object", ParDo.of(new DoFn<ShipmentBookingResponse, Map<String, List<TableRow>>>() {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
-                        try {
-                            Response response = c.element().response;
+                        Response response = c.element().response;
 
-                            Map<String, List<TableRow>> tableRow = new ArrayMap<>();
-                            tableRow.put("orders", new ArrayList<>());
-                            tableRow.put("shipments", new ArrayList<>());
-                            tableRow.put("labels", new ArrayList<>());
-                            tableRow.put("details", new ArrayList<>());
+                        Map<String, List<TableRow>> tableRow = new ArrayMap<>();
+                        tableRow.put("orders", new ArrayList<>());
+                        tableRow.put("shipments", new ArrayList<>());
+                        tableRow.put("labels", new ArrayList<>());
+                        tableRow.put("details", new ArrayList<>());
 
-                            tableRow.get("orders")
+                        tableRow.get("orders")
+                                .add(new TableRow()
+                                        .set("OrderId", response.orderId)
+                                        .set("CustomerId", response.customerId)
+                                        .set("SortingFilter", response.sortingFilter)
+                                        .set("CarrierName", response.carrierName)
+                                        .set("CarrierServiceName", response.carrierServiceName)
+                                        .set("Date", new DateTime(response.date).toString())
+                                );
+                        for (ShipmentBooked shipment : response.shipmentsBooked) {
+                            tableRow.get("shipments")
                                     .add(new TableRow()
-                                            .set("OrderId", response.orderId)
-                                            .set("CustomerId", response.customerId)
-                                            .set("SortingFilter", response.sortingFilter)
-                                            .set("CarrierName", response.carrierName)
-                                            .set("CarrierServiceName", response.carrierServiceName));
-                            for (ShipmentBooked shipment : response.shipmentsBooked) {
-                                tableRow.get("shipments")
+                                            .set("OrderIdRef", response.orderId)
+                                            .set("ShipmentId", shipment.data.shipmentId)
+                                            .set("Type", shipment.data.type)
+                                            .set("CarrierConsignmentNumber", shipment.data.carrierConsignmentNumber)
+                                    );
+//                                for (LabelType label : shipment.data.labels) {
+//                                    tableRow.get("labels")
+//                                            .add(new TableRow()
+//                                                    .set("ShipmentIdRef", shipment.data.shipmentId)
+//                                                    .set("Type", label.type)
+//                                                    .set("Value", label.value));
+//                                }
+                            for (DeliveryDetail detail : shipment.deliveriesDetails) {
+                                tableRow.get("details")
                                         .add(new TableRow()
-                                                .set("OrderIdRef", response.orderId)
-                                                .set("ShipmentId", shipment.data.shipmentId)
-                                                .set("Type", shipment.data.type)
-                                                .set("CarrierConsignmentNumber", shipment.data.carrierConsignmentNumber));
-                                for (LabelType label : shipment.data.labels) {
-                                    tableRow.get("labels")
-                                            .add(new TableRow()
-                                                    .set("ShipmentIdRef", shipment.data.shipmentId)
-                                                    .set("Type", label.type)
-                                                    .set("Value", label.value));
-                                }
-                                for (DeliveryDetail detail : shipment.deliveriesDetails) {
-                                    tableRow.get("details")
-                                            .add(new TableRow()
-                                                    .set("ShipmentIdRef", shipment.data.shipmentId)
-                                                    .set("LineNumber", detail.lineNumber)
-                                                    .set("PackageNumber", detail.packageNumber)
-                                                    .set("EAN", detail.ean)
-                                                    .set("Quantity", detail.itemQuantity));
-                                }
+                                                .set("ShipmentIdRef", shipment.data.shipmentId)
+                                                .set("LineNumber", detail.lineNumber)
+                                                .set("PackageNumber", detail.packageNumber)
+                                                .set("EAN", detail.ean)
+                                                .set("Quantity", detail.itemQuantity)
+                                        );
                             }
-                            c.output(tableRow);
-                        } catch (Exception e) {
-                            e.printStackTrace();
                         }
+                        c.output(tableRow);
                     }
                 }));
 
         tablesRow
-                .apply("Get order TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
+                .apply("Get Order TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
                         for (TableRow r : c.element().get("orders")) // Should only have 1
                             c.output(r);
                     }
                 }))
-                .apply("Write to BigQuery", BigQueryIO.writeTableRows()
-                        .to("datapipeline-redoute:ShipmentBooking.Orders")
+                .apply("Write to datapipeline-redoute:SHIPMENT_BOOKING.Orders", BigQueryIO.writeTableRows()
+                        .to("datapipeline-redoute:SHIPMENT_BOOKING.Orders")
                         .withSchema(new TableSchema().setFields(Arrays.asList(
-                                new TableFieldSchema().setName("OrderId").setType("STRING"),
-                                new TableFieldSchema().setName("CustomerId").setType("STRING"),
-                                new TableFieldSchema().setName("SortingFilter").setType("STRING"),
-                                new TableFieldSchema().setName("CarrierName").setType("STRING"),
-                                new TableFieldSchema().setName("CarrierServiceName").setType("STRING")
+                                new TableFieldSchema().setName("OrderId").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("CustomerId").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("SortingFilter").setType("STRING").setMode("NULLABLE"),
+                                new TableFieldSchema().setName("CarrierName").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("CarrierServiceName").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("Date").setType("STRING").setMode("REQUIRED")
                         )))
                         .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
                         .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
@@ -162,34 +171,34 @@ public class ShipmentBookingDataflow {
                             c.output(r);
                     }
                 }))
-                .apply("Write to BigQuery", BigQueryIO.writeTableRows()
-                        .to("datapipeline-redoute:ShipmentBooking.Shipments")
+                .apply("Write to datapipeline-redoute:SHIPMENT_BOOKING.Shipments", BigQueryIO.writeTableRows()
+                        .to("datapipeline-redoute:SHIPMENT_BOOKING.Shipments")
                         .withSchema(new TableSchema().setFields(Arrays.asList(
-                                new TableFieldSchema().setName("OrderIdRef").setType("STRING"),
-                                new TableFieldSchema().setName("ShipmentId").setType("STRING"),
-                                new TableFieldSchema().setName("Type").setType("STRING"),
-                                new TableFieldSchema().setName("CarrierConsignmentNumber").setType("STRING")
+                                new TableFieldSchema().setName("OrderIdRef").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("ShipmentId").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("Type").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("CarrierConsignmentNumber").setType("STRING").setMode("REQUIRED")
                         )))
                         .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
                         .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
 
-        tablesRow
-                .apply("Get Labels TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
-                    @ProcessElement
-                    public void processElement(ProcessContext c) {
-                        for (TableRow r : c.element().get("labels"))
-                            c.output(r);
-                    }
-                }))
-                .apply("Write to BigQuery", BigQueryIO.writeTableRows()
-                        .to("datapipeline-redoute:ShipmentBooking.Labels")
-                        .withSchema(new TableSchema().setFields(Arrays.asList(
-                                new TableFieldSchema().setName("ShipmentIdRef").setType("STRING"),
-                                new TableFieldSchema().setName("Type").setType("STRING"),
-                                new TableFieldSchema().setName("Value").setType("STRING")
-                        )))
-                        .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
-                        .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
+//        tablesRow
+//                .apply("Get Labels TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
+//                    @ProcessElement
+//                    public void processElement(ProcessContext c) {
+//                        for (TableRow r : c.element().get("labels"))
+//                            c.output(r);
+//                    }
+//                }))
+//                .apply("Write to datapipeline-redoute:SHIPMENT_BOOKING.Labels", BigQueryIO.writeTableRows()
+//                        .to("datapipeline-redoute:SHIPMENT_BOOKING.Labels")
+//                        .withSchema(new TableSchema().setFields(Arrays.asList(
+//                                new TableFieldSchema().setName("ShipmentIdRef").setType("STRING"),
+//                                new TableFieldSchema().setName("Type").setType("STRING"),
+//                                new TableFieldSchema().setName("Value").setType("STRING")
+//                        )))
+//                        .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
+//                        .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
 
         tablesRow
                 .apply("Get Details TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
@@ -199,14 +208,14 @@ public class ShipmentBookingDataflow {
                             c.output(r);
                     }
                 }))
-                .apply("Write to BigQuery", BigQueryIO.writeTableRows()
-                        .to("datapipeline-redoute:ShipmentBooking.Details")
+                .apply("Write to datapipeline-redoute:SHIPMENT_BOOKING.Details", BigQueryIO.writeTableRows()
+                        .to("datapipeline-redoute:SHIPMENT_BOOKING.Details")
                         .withSchema(new TableSchema().setFields(Arrays.asList(
-                                new TableFieldSchema().setName("ShipmentIdRef").setType("STRING"),
-                                new TableFieldSchema().setName("LineNumber").setType("INTEGER"),
-                                new TableFieldSchema().setName("PackageNumber").setType("INTEGER"),
-                                new TableFieldSchema().setName("EAN").setType("STRING"),
-                                new TableFieldSchema().setName("Quantity").setType("INTEGER")
+                                new TableFieldSchema().setName("ShipmentIdRef").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("LineNumber").setType("INTEGER").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("PackageNumber").setType("INTEGER").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("EAN").setType("STRING").setMode("REQUIRED"),
+                                new TableFieldSchema().setName("Quantity").setType("INTEGER").setMode("REQUIRED")
                         )))
                         .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
                         .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
