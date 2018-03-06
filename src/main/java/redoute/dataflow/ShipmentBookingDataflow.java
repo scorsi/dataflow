@@ -23,9 +23,9 @@ import redoute.dataflow.data.shipmentBooking.ShipmentBooked;
 import redoute.dataflow.data.shipmentBooking.ShipmentBookingResponse;
 
 import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -70,8 +70,9 @@ public class ShipmentBookingDataflow {
                             ShipmentBookingResponse shipmentBooking = (ShipmentBookingResponse) unmarshaller.unmarshal(reader);
                             if (shipmentBooking == null || shipmentBooking.response == null) return;
                             c.output(shipmentBooking);
-                        } catch (JAXBException e) {
-                            LOG.error("Unexpected error while parsing XML file. File was: <[\n" + c.element() + "\n]>", e);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            LOG.error("Unexpected error while parsing XML file.\nFile was: <[\n" + c.element() + "\n]>", e);
                         }
                     }
                 }));
@@ -98,31 +99,18 @@ public class ShipmentBookingDataflow {
                 .apply("Create BigQuery TableRows from Java-Object", ParDo.of(new DoFn<ShipmentBookingResponse, Map<String, List<TableRow>>>() {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
-                        Response response = c.element().response;
+                        try {
+                            Response response = c.element().response;
 
-                        Map<String, List<TableRow>> tableRow = new ArrayMap<>();
-                        tableRow.put("orders", new ArrayList<>());
-                        tableRow.put("shipments", new ArrayList<>());
-                        tableRow.put("labels", new ArrayList<>());
-                        tableRow.put("details", new ArrayList<>());
+                            Map<String, List<TableRow>> tableRow = new ArrayMap<>();
+                            tableRow.put("orders", new ArrayList<>());
+                            tableRow.put("shipments", new ArrayList<>());
+                            tableRow.put("labels", new ArrayList<>());
+                            tableRow.put("details", new ArrayList<>());
 
-                        tableRow.get("orders")
-                                .add(new TableRow()
-                                        .set("OrderId", response.orderId)
-                                        .set("CustomerId", response.customerId)
-                                        .set("SortingFilter", response.sortingFilter)
-                                        .set("CarrierName", response.carrierName)
-                                        .set("CarrierServiceName", response.carrierServiceName)
-                                        .set("Date", new DateTime(response.date).toString())
-                                );
-                        for (ShipmentBooked shipment : response.shipmentsBooked) {
-                            tableRow.get("shipments")
-                                    .add(new TableRow()
-                                            .set("OrderIdRef", response.orderId)
-                                            .set("ShipmentId", shipment.data.shipmentId)
-                                            .set("Type", shipment.data.type)
-                                            .set("CarrierConsignmentNumber", shipment.data.carrierConsignmentNumber)
-                                    );
+                            tableRow.get("orders").add(new TableRow().set("OrderId", response.orderId).set("CustomerId", response.customerId).set("SortingFilter", response.sortingFilter).set("CarrierName", response.carrierName).set("CarrierServiceName", response.carrierServiceName).set("Date", new DateTime(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").parse(c.element().responseStatus.timestamp)).toString()));
+                            for (ShipmentBooked shipment : response.shipmentsBooked) {
+                                tableRow.get("shipments").add(new TableRow().set("OrderIdRef", response.orderId).set("ShipmentId", shipment.data.shipmentId).set("Type", shipment.data.type).set("CarrierConsignmentNumber", shipment.data.carrierConsignmentNumber));
 //                                for (LabelType label : shipment.data.labels) {
 //                                    tableRow.get("labels")
 //                                            .add(new TableRow()
@@ -130,18 +118,14 @@ public class ShipmentBookingDataflow {
 //                                                    .set("Type", label.type)
 //                                                    .set("Value", label.value));
 //                                }
-                            for (DeliveryDetail detail : shipment.deliveriesDetails) {
-                                tableRow.get("details")
-                                        .add(new TableRow()
-                                                .set("ShipmentIdRef", shipment.data.shipmentId)
-                                                .set("LineNumber", detail.lineNumber)
-                                                .set("PackageNumber", detail.packageNumber)
-                                                .set("EAN", detail.ean)
-                                                .set("Quantity", detail.itemQuantity)
-                                        );
+                                for (DeliveryDetail detail : shipment.deliveriesDetails) {
+                                    tableRow.get("details").add(new TableRow().set("ShipmentIdRef", shipment.data.shipmentId).set("LineNumber", detail.lineNumber).set("PackageNumber", detail.packageNumber).set("EAN", detail.ean).set("Quantity", detail.itemQuantity));
+                                }
                             }
+                            c.output(tableRow);
+                        } catch (Exception e) {
+                            LOG.error("Unknown error", e);
                         }
-                        c.output(tableRow);
                     }
                 }));
 

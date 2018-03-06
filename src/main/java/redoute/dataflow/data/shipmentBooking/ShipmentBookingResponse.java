@@ -13,6 +13,9 @@ import java.io.Serializable;
 @XmlRootElement(name = "GetShipmentBookingResponse_6.0", namespace = "http://Redoute/Shipment/TEMANDO/ShipmentBooking/1.0/GetShipmentBooking/6.0")
 public class ShipmentBookingResponse implements Serializable {
 
+    @XmlElement(name = "ResponseStatus")
+    public ResponseStatus responseStatus;
+
     @XmlElement(name = "Response")
     public Response response;
 
