@@ -17,10 +17,7 @@ import org.apache.beam.sdk.values.PCollection;
 import org.joda.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redoute.dataflow.data.shipmentBooking.DeliveryDetail;
-import redoute.dataflow.data.shipmentBooking.Response;
-import redoute.dataflow.data.shipmentBooking.ShipmentBooked;
-import redoute.dataflow.data.shipmentBooking.ShipmentBookingResponse;
+import redoute.dataflow.data.shipmentBooking.*;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Unmarshaller;
@@ -111,13 +108,9 @@ public class ShipmentBookingDataflow {
                             tableRow.get("orders").add(new TableRow().set("OrderId", response.orderId).set("CustomerId", response.customerId).set("SortingFilter", response.sortingFilter).set("CarrierName", response.carrierName).set("CarrierServiceName", response.carrierServiceName).set("Date", new DateTime(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").parse(c.element().responseStatus.timestamp)).toString()));
                             for (ShipmentBooked shipment : response.shipmentsBooked) {
                                 tableRow.get("shipments").add(new TableRow().set("OrderIdRef", response.orderId).set("ShipmentId", shipment.data.shipmentId).set("Type", shipment.data.type).set("CarrierConsignmentNumber", shipment.data.carrierConsignmentNumber));
-//                                for (LabelType label : shipment.data.labels) {
-//                                    tableRow.get("labels")
-//                                            .add(new TableRow()
-//                                                    .set("ShipmentIdRef", shipment.data.shipmentId)
-//                                                    .set("Type", label.type)
-//                                                    .set("Value", label.value));
-//                                }
+                                for (LabelType label : shipment.data.labels) {
+                                    tableRow.get("labels").add(new TableRow().set("ShipmentIdRef", shipment.data.shipmentId).set("Type", label.type));
+                                }
                                 for (DeliveryDetail detail : shipment.deliveriesDetails) {
                                     tableRow.get("details").add(new TableRow().set("ShipmentIdRef", shipment.data.shipmentId).set("LineNumber", detail.lineNumber).set("PackageNumber", detail.packageNumber).set("EAN", detail.ean).set("Quantity", detail.itemQuantity));
                                 }
@@ -169,23 +162,13 @@ public class ShipmentBookingDataflow {
                         .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
                         .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
 
-//        tablesRow
-//                .apply("Get Labels TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
-//                    @ProcessElement
-//                    public void processElement(ProcessContext c) {
-//                        for (TableRow r : c.element().get("labels"))
-//                            c.output(r);
-//                    }
-//                }))
-//                .apply("Write to datapipeline-redoute:SHIPMENT_BOOKING.Labels", BigQueryIO.writeTableRows()
-//                        .to("datapipeline-redoute:SHIPMENT_BOOKING.Labels")
-//                        .withSchema(new TableSchema().setFields(Arrays.asList(
-//                                new TableFieldSchema().setName("ShipmentIdRef").setType("STRING"),
-//                                new TableFieldSchema().setName("Type").setType("STRING"),
-//                                new TableFieldSchema().setName("Value").setType("STRING")
-//                        )))
-//                        .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
-//                        .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
+        tablesRow.apply("Get Labels TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
+            @ProcessElement
+            public void processElement(ProcessContext c) {
+                for (TableRow r : c.element().get("labels"))
+                    c.output(r);
+            }
+        })).apply("Write to datapipeline-redoute:SHIPMENT_BOOKING.Labels", BigQueryIO.writeTableRows().to("datapipeline-redoute:SHIPMENT_BOOKING.Labels").withSchema(new TableSchema().setFields(Arrays.asList(new TableFieldSchema().setName("ShipmentIdRef").setType("STRING").setMode("REQUIRED"), new TableFieldSchema().setName("Type").setType("STRING").setMode("REQUIRED")))).withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND).withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
 
         tablesRow
                 .apply("Get Details TableRow", ParDo.of(new DoFn<Map<String, List<TableRow>>, TableRow>() {
