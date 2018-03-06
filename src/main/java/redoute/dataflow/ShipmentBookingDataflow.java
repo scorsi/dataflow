@@ -15,6 +15,8 @@ import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.PCollection;
 import org.joda.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redoute.dataflow.data.shipmentBooking.DeliveryDetail;
 import redoute.dataflow.data.shipmentBooking.Response;
 import redoute.dataflow.data.shipmentBooking.ShipmentBooked;
@@ -36,6 +38,8 @@ import java.util.Map;
  */
 public class ShipmentBookingDataflow {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ShipmentBookingDataflow.class);
+
     static public void main(String[] args) {
         /* Create the pipeline options */
         ShipmentBookingDataflowOptions options = PipelineOptionsFactory
@@ -49,7 +53,6 @@ public class ShipmentBookingDataflow {
         /* Apply transformations to the pipeline */
         PCollection<ShipmentBookingResponse> shipments = pipeline
                 .apply("Read the XML files from PubSub",
-
                         PubsubIO.readStrings()
                                 .fromSubscription(options.getPubSubSubscription()))
 
@@ -58,18 +61,18 @@ public class ShipmentBookingDataflow {
 
                 .apply("Transform XML nodes to Java-Object", ParDo.of(new DoFn<String, ShipmentBookingResponse>() {
                     @ProcessElement
-                    public void processeElement(ProcessContext c) throws JAXBException {
-//                        try {
-                        JAXBContext jaxbContext = JAXBContext.newInstance(ShipmentBookingResponse.class);
-                        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-                        StringReader reader = new StringReader(c.element());
+                    public void processeElement(ProcessContext c) {
+                        try {
+                            JAXBContext jaxbContext = JAXBContext.newInstance(ShipmentBookingResponse.class);
+                            Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+                            StringReader reader = new StringReader(c.element());
 
-                        ShipmentBookingResponse shipmentBooking = (ShipmentBookingResponse) unmarshaller.unmarshal(reader);
-                        if (shipmentBooking == null || shipmentBooking.response == null) return;
-                        c.output(shipmentBooking);
-//                        } catch (JAXBException e) {
-//                            e.printStackTrace();
-//                        }
+                            ShipmentBookingResponse shipmentBooking = (ShipmentBookingResponse) unmarshaller.unmarshal(reader);
+                            if (shipmentBooking == null || shipmentBooking.response == null) return;
+                            c.output(shipmentBooking);
+                        } catch (JAXBException e) {
+                            LOG.error("Unexpected error while parsing XML file. File was: <[\n" + c.element() + "\n]>", e);
+                        }
                     }
                 }));
 
@@ -80,7 +83,6 @@ public class ShipmentBookingDataflow {
                     @ProcessElement
                     public void processElement(ProcessContext c) {
                         c.output(c.element().toJson());
-                        System.out.println(c.element().toJson());
                     }
                 }))
                 .apply("Write to PubSub", ParDo.of(new DoFn<String, Void>() {
@@ -91,6 +93,7 @@ public class ShipmentBookingDataflow {
                 }));
 
         // Write to BigQuery
+
         PCollection<Map<String, List<TableRow>>> tablesRow = shipments
                 .apply("Create BigQuery TableRows from Java-Object", ParDo.of(new DoFn<ShipmentBookingResponse, Map<String, List<TableRow>>>() {
                     @ProcessElement
