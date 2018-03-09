@@ -21,7 +21,7 @@ public class DisplayPubSubContent {
 
         p.apply("Read from PubSub",
                 PubsubIO.readStrings()
-                        .fromSubscription(options.getPubSubSubscription()))
+                        .fromSubscription("projects/datapipeline-redoute/subscriptions/shipmentbooking-example-dataflow"))
 
                 .apply("Apply fixed window",
                         Window.into(SlidingWindows.of(Duration.standardSeconds(10)).every(Duration.standardSeconds(10))))
@@ -34,12 +34,12 @@ public class DisplayPubSubContent {
                     }
                 }))
 
-//                .apply("Show host attribute", ParDo.of(new DoFn<String, String>() {
+//                .apply("Show hostExtension attribute", ParDo.of(new DoFn<String, String>() {
 //                    @SuppressWarnings("unused")
 //                    @ProcessElement
 //                    public void processElement(ProcessContext c) {
 //                        JSONObject obj = new JSONObject(c.element());
-//                        System.out.println(obj.getString("host"));
+//                        System.out.println(obj.getString("hostExtension"));
 //                    }
 //                }))
         ;

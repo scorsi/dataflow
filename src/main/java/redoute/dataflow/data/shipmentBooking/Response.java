@@ -28,6 +28,7 @@ public class Response implements Serializable {
     @XmlElement(name = "CarrierServiceName")
     public String carrierServiceName;
 
+    @Deprecated
     public Date date = Date.from(Instant.now());
 
     @XmlElementWrapper(name = "ShipmentsBooked")

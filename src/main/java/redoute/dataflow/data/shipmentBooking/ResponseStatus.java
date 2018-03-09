@@ -13,6 +13,8 @@ public class ResponseStatus implements Serializable {
     @XmlElement(name = "Timestamp")
     public String timestamp;
 
+    public String date;
+
     @XmlElement(name = "RequestId")
     public String requestId;
 
