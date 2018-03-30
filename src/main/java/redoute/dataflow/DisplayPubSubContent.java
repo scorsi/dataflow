@@ -1,6 +1,10 @@
 package redoute.dataflow;
 
+import com.google.api.services.bigquery.model.TableFieldSchema;
+import com.google.api.services.bigquery.model.TableRow;
+import com.google.api.services.bigquery.model.TableSchema;
 import org.apache.beam.sdk.Pipeline;
+import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
 import org.apache.beam.sdk.options.*;
 import org.apache.beam.sdk.transforms.DoFn;
@@ -8,6 +12,9 @@ import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.joda.time.Duration;
+import org.json.JSONObject;
+
+import java.util.Arrays;
 
 public class DisplayPubSubContent {
 
@@ -21,27 +28,51 @@ public class DisplayPubSubContent {
 
         p.apply("Read from PubSub",
                 PubsubIO.readStrings()
-                        .fromSubscription("projects/datapipeline-redoute/subscriptions/shipmentbooking-example-dataflow"))
+                        .fromSubscription(options.getPubSubSubscription()))
 
                 .apply("Apply fixed window",
                         Window.into(SlidingWindows.of(Duration.standardSeconds(10)).every(Duration.standardSeconds(10))))
 
-                .apply("Display content", ParDo.of(new DoFn<String, String>() {
+                .apply("Parse JSON", ParDo.of(new DoFn<String, TableRow>() {
                     @SuppressWarnings("unused")
                     @ProcessElement
                     public void processElement(ProcessContext c) {
-                        System.out.println(c.element());
+                        JSONObject obj = new JSONObject(c.element());
+                        String transactionAmount = null;
+                        String transactionId = null;
+                        if (!obj.isNull("transaction")) {
+                            JSONObject transaction = obj.getJSONObject("transaction");
+                            transactionAmount = transaction.isNull("amount") ? null : transaction.getBigDecimal("amount").toString();
+                            transactionId = transaction.isNull("tx_id") ? null : transaction.getBigDecimal("tx_id").toString();
+                        }
+                        c.output(new TableRow()
+                                .set("date", obj.getString("date"))
+                                .set("referer", obj.isNull("referer") ? null : obj.getString("referer"))
+                                .set("url", obj.getString("url"))
+                                .set("sessionId", obj.getString("sessionId"))
+                                .set("localUid", obj.isNull("localuid") ? null : obj.getString("localuid"))
+                                .set("userAgent", obj.getString("userAgent"))
+                                .set("type", obj.isNull("type") ? null : obj.getString("type"))
+                                .set("transactionAmount", transactionAmount)
+                                .set("transactionId", transactionId));
                     }
                 }))
 
-//                .apply("Show hostExtension attribute", ParDo.of(new DoFn<String, String>() {
-//                    @SuppressWarnings("unused")
-//                    @ProcessElement
-//                    public void processElement(ProcessContext c) {
-//                        JSONObject obj = new JSONObject(c.element());
-//                        System.out.println(obj.getString("hostExtension"));
-//                    }
-//                }))
+                .apply("Write to BigQuery", BigQueryIO.writeTableRows()
+                        .to("gl-hackathon:NAV.TEST")
+                        .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED)
+                        .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
+                        .withSchema(new TableSchema().setFields(Arrays.asList(
+                                new TableFieldSchema().setName("date").setType("STRING"),
+                                new TableFieldSchema().setName("referer").setType("STRING"),
+                                new TableFieldSchema().setName("url").setType("STRING"),
+                                new TableFieldSchema().setName("sessionId").setType("STRING"),
+                                new TableFieldSchema().setName("localUid").setType("STRING"),
+                                new TableFieldSchema().setName("userAgent").setType("STRING"),
+                                new TableFieldSchema().setName("type").setType("STRING"),
+                                new TableFieldSchema().setName("transactionAmount").setType("STRING"),
+                                new TableFieldSchema().setName("transactionId").setType("STRING")
+                        ))))
         ;
 
         p.run().waitUntilFinish();

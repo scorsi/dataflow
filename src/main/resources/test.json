@@ -1,0 +1,34 @@
+{
+  "httpRequest": {
+    "cacheLookup": true,
+    "referer": "http://www.laredoute.fr/ppdp/prod-507374340.aspx?dim1=1000&dim2=1000&docid=00000000000001&single=1",
+    "remoteIp": "218.238.181.104",
+    "requestMethod": "GET",
+    "requestSize": "1658",
+    "requestUrl": "https://streaming-data-laredoute.fr/pixel.png?product_id=507374340&env_template=PDP&user_id=fb89158889051b389d1a30409cd32228&host=www.laredoute.fr&order_product_id=",
+    "responseSize": "352",
+    "status": 304,
+    "userAgent": "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko"
+  },
+  "insertId": "kj7yvgg1pl4yxd",
+  "jsonPayload": {
+    "@type": "type.googleapis.com/google.cloud.loadbalancing.type.LoadBalancerLogEntry",
+    "statusDetails": "response_sent_by_backend"
+  },
+  "logName": "projects/datapipeline-redoute/logs/requests",
+  "receiveTimestamp": "2018-02-16T13:13:50.381615188Z",
+  "resource": {
+    "labels": {
+      "backend_service_name": "",
+      "forwarding_rule_name": "pixel-frontend",
+      "project_id": "datapipeline-redoute",
+      "target_proxy_name": "lbl-pixel-tracking-target-proxy-2",
+      "url_map_name": "lbl-pixel-tracking",
+      "zone": "global"
+    },
+    "type": "http_load_balancer"
+  },
+  "severity": "INFO",
+  "timestamp": "2018-02-16T13:13:49.891177716Z",
+  "trace": "projects/datapipeline-redoute/traces/279cf5c8aba13d8eacc47d566c07b3d1"
+}

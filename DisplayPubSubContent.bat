@@ -1,1 +1,1 @@
-mvn compile exec:java -Dexec.mainClass=redoute.dataflow.DisplayPubSubContent -Dexec.args="--project=datapipeline-redoute --stagingLocation=gs://dataflow-redoute/staging --tempLocation=gs://dataflow-redoute/temp --pubSubSubscription=projects/datapipeline-redoute/subscriptions/display-test --runner=DirectRunner"
+mvn compile exec:java -Dexec.mainClass=redoute.dataflow.DisplayPubSubContent -Dexec.args="--project=gl-hackathon --pubSubSubscription=projects/gl-hackathon/subscriptions/hackathon-test-display --runner=DataflowRunner"
